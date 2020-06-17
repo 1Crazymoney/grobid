@@ -41,6 +41,7 @@ import org.grobid.core.utilities.LanguageUtilities;
 import org.grobid.core.utilities.TextUtilities;
 import org.grobid.core.utilities.KeyGen;
 import org.grobid.core.utilities.LayoutTokensUtil;
+import org.grobid.core.utilities.ResultsExtractor;
 import org.grobid.core.utilities.GrobidProperties;
 import org.grobid.core.utilities.Consolidation;
 import org.grobid.core.utilities.matching.ReferenceMarkerMatcher;
@@ -1189,7 +1190,7 @@ public class FullTextParser extends AbstractParser {
     //              StringTokenizer st = new StringTokenizer(fulltext, "\n");
     	            String rese = label(bodytext);
     				//System.out.println(rese);
-    	            StringBuilder bufferFulltext = trainingExtraction(rese, tokenizationsBody);
+    	            StringBuilder bufferFulltext = trainingExtraction(rese, tokenizationsBody, doc.getPDFAnnotations());
 
     	            // write the TEI file to reflect the extract layout of the text as extracted from the pdf
     	            writer = new OutputStreamWriter(new FileOutputStream(new File(pathTEI +
@@ -1479,13 +1480,15 @@ public class FullTextParser extends AbstractParser {
      * @return extraction
      */
     private StringBuilder trainingExtraction(String result,
-                                            List<LayoutToken> tokenizations) {
+                                            List<LayoutToken> tokenizations,
+                                            List<PDFAnnotation> annotations) {
         // this is the main buffer for the whole full text
         StringBuilder buffer = new StringBuilder();
+        ResultsExtractor results = new ResultsExtractor(annotations);
         try {
             StringTokenizer st = new StringTokenizer(result, "\n");
-            String s1 = null;
-            String s2 = null;
+            String currentTag = null;
+            String content = null;
             String lastTag = null;
 			//System.out.println(tokenizations.toString());
 			//System.out.println(result);
@@ -1496,6 +1499,8 @@ public class FullTextParser extends AbstractParser {
             boolean headFigure = false;
             boolean descFigure = false;
             boolean tableBlock = false;
+
+            int last_result_n = 0;
 
             while (st.hasMoreTokens()) {
                 boolean addSpace = false;
@@ -1510,13 +1515,21 @@ public class FullTextParser extends AbstractParser {
 
                 boolean newLine = false;
                 int ll = stt.countTokens();
+                String result_type = "text";
+                int result_n = 0;
+
                 while (stt.hasMoreTokens()) {
                     String s = stt.nextToken().trim();
                     if (i == 0) {
-                        s2 = TextUtilities.HTMLEncode(s); // lexical token
+                        content = TextUtilities.HTMLEncode(s); // lexical token
 						int p0 = p;
                         boolean strop = false;
                         while ((!strop) && (p < tokenizations.size())) {
+
+                            Pair<String, Integer> kind = results.getKind(tokenizations.get(p));
+                            result_type = kind.getKey();
+                            result_n = kind.getValue();
+                            
                             String tokOriginal = tokenizations.get(p).t();
                             if (tokOriginal.equals(" ")
 							 || tokOriginal.equals("\u00A0")) {
@@ -1539,7 +1552,28 @@ public class FullTextParser extends AbstractParser {
 							}
 						}
                     } else if (i == ll - 1) {
-                        s1 = s; // current tag
+                        if (result_type.equals("Theorem")) {
+                            if (last_result_n == result_n) {
+                                currentTag = "<theorem>";
+                            } else {
+                                currentTag = "I-<theorem>";
+                                System.out.println("Theorem:"+last_result_n+"/"+result_n+".");
+                            }
+
+                            last_result_n = result_n;
+                        } else if (result_type.equals("proof")) {
+                            if (last_result_n == result_n) {
+                                currentTag = "<proof>";
+                            } else {
+                                System.out.println("Proof:"+last_result_n+"/"+result_n+".");
+                                currentTag = "I-<proof>";
+                            }
+
+                            last_result_n = result_n;
+                        } else {
+                            currentTag = s; // current tag
+                        }
+
                     } else {
                         if (s.equals("LINESTART"))
                             newLine = true;
@@ -1561,93 +1595,103 @@ public class FullTextParser extends AbstractParser {
                     }
                 }
                 String currentTag0 = null;
-                if (s1 != null) {
-                    if (s1.startsWith("I-")) {
-                        currentTag0 = s1.substring(2, s1.length());
+                if (currentTag != null) {
+                    if (currentTag.startsWith("I-")) {
+                        currentTag0 = currentTag.substring(2, currentTag.length());
                     } else {
-                        currentTag0 = s1;
+                        currentTag0 = currentTag;
                     }
                 }
 
+                //System.out.print(currentTag+"/"+currentTag0+"//");
+
                 boolean closeParagraph = false;
                 if (lastTag != null) {
-                    closeParagraph = testClosingTag(buffer, currentTag0, lastTag0, s1);
+                    closeParagraph = testClosingTag(buffer, currentTag0, lastTag0, currentTag);
                 }
 
                 boolean output;
 
-                //output = writeField(buffer, s1, lastTag0, s2, "<header>", "<front>", addSpace, 3);
+                //output = writeField(buffer, currentTag, lastTag0, content, "<header>", "<front>", addSpace, 3);
                 //if (!output) {
-                    output = writeField(buffer, s1, lastTag0, s2, "<other>",
+                    output = writeField(buffer, currentTag, lastTag0, content, "<other>",
 						"<note type=\"other\">", addSpace, 3, false);
                 //}
                 // for paragraph we must distinguish starting and closing tags
                 if (!output) {
                     if (closeParagraph) {
-                        output = writeFieldBeginEnd(buffer, s1, "", s2, "<paragraph>",
+                        output = writeFieldBeginEnd(buffer, currentTag, "", content, "<paragraph>",
 							"<p>", addSpace, 3, false);
                     } else {
-                        output = writeFieldBeginEnd(buffer, s1, lastTag, s2, "<paragraph>",
+                        output = writeFieldBeginEnd(buffer, currentTag, lastTag, content, "<paragraph>",
 							"<p>", addSpace, 3, false);
                     }
                 }
                 /*if (!output) {
                     if (closeParagraph) {
-                        output = writeField(buffer, s1, "", s2, "<reference_marker>", "<label>", addSpace, 3);
+                        output = writeField(buffer, currentTag, "", content, "<reference_marker>", "<label>", addSpace, 3);
                     } else
-                        output = writeField(buffer, s1, lastTag0, s2, "<reference_marker>", "<label>", addSpace, 3);
+                        output = writeField(buffer, currentTag, lastTag0, content, "<reference_marker>", "<label>", addSpace, 3);
                 }*/
                 if (!output) {
-                    output = writeField(buffer, s1, lastTag0, s2, "<citation_marker>", "<ref type=\"biblio\">",
+                    output = writeFieldBeginEnd(buffer, currentTag, lastTag0, content, "<theorem>", "<result type=\"theorem\">", 
                             addSpace, 3, false);
                 }
                 if (!output) {
-                    output = writeField(buffer, s1, lastTag0, s2, "<table_marker>", "<ref type=\"table\">",
+                    output = writeFieldBeginEnd(buffer, currentTag, lastTag0, content, "<proof>", "<result type=\"proof\">", 
                             addSpace, 3, false);
                 }
                 if (!output) {
-                    output = writeField(buffer, s1, lastTag0, s2, "<equation_marker>", "<ref type=\"formula\">",
+                    output = writeField(buffer, currentTag, lastTag0, content, "<citation_marker>", "<ref type=\"biblio\">",
                             addSpace, 3, false);
                 }
                 if (!output) {
-                    output = writeField(buffer, s1, lastTag0, s2, "<section>",
+                    output = writeField(buffer, currentTag, lastTag0, content, "<table_marker>", "<ref type=\"table\">",
+                            addSpace, 3, false);
+                }
+                if (!output) {
+                    output = writeField(buffer, currentTag, lastTag0, content, "<equation_marker>", "<ref type=\"formula\">",
+                            addSpace, 3, false);
+                }
+                if (!output) {
+                    output = writeField(buffer, currentTag, lastTag0, content, "<section>",
 						"<head>", addSpace, 3, false);
                 }
                 /*if (!output) {
-                    output = writeField(buffer, s1, lastTag0, s2, "<subsection>", 
+                    output = writeField(buffer, currentTag, lastTag0, content, "<subsection>", 
 						"<head>", addSpace, 3, false);
                 }*/
                 if (!output) {
-                    output = writeField(buffer, s1, lastTag0, s2, "<equation>",
+                    output = writeField(buffer, currentTag, lastTag0, content, "<equation>",
 						"<formula>", addSpace, 4, false);
                 }
                 if (!output) {
-                    output = writeField(buffer, s1, lastTag0, s2, "<equation_label>", 
+                    output = writeField(buffer, currentTag, lastTag0, content, "<equation_label>", 
 						"<label>", addSpace, 4, false);
                 }
                 if (!output) {
-                    output = writeField(buffer, s1, lastTag0, s2, "<figure_marker>",
+                    output = writeField(buffer, currentTag, lastTag0, content, "<figure_marker>",
 						"<ref type=\"figure\">", addSpace, 3, false);
                 }
 				if (!output) {
-                    output = writeField(buffer, s1, lastTag0, s2, "<figure>",
+                    output = writeField(buffer, currentTag, lastTag0, content, "<figure>",
 						"<figure>", addSpace, 3, false);
                 }
 				if (!output) {
-                    output = writeField(buffer, s1, lastTag0, s2, "<table>",
+                    output = writeField(buffer, currentTag, lastTag0, content, "<table>",
 						"<figure type=\"table\">", addSpace, 3, false);
                 }
                 // for item we must distinguish starting and closing tags
                 if (!output) {
-                    output = writeFieldBeginEnd(buffer, s1, lastTag, s2, "<item>",
+                    output = writeFieldBeginEnd(buffer, currentTag, lastTag, content, "<item>",
 						"<item>", addSpace, 3, false);
                 }
 
-                lastTag = s1;
+                lastTag = currentTag;
 
                 if (!st.hasMoreTokens()) {
                     if (lastTag != null) {
-                        testClosingTag(buffer, "", currentTag0, s1);
+                        testClosingTag(buffer, "", currentTag0, currentTag);
                     }
                 }
                 if (start) {
@@ -1666,9 +1710,9 @@ public class FullTextParser extends AbstractParser {
      * TODO some documentation...
      *
      * @param buffer buffer
-     * @param s1
+     * @param currentTag
      * @param lastTag0
-     * @param s2
+     * @param content
      * @param field
      * @param outField
      * @param addSpace
@@ -1676,19 +1720,19 @@ public class FullTextParser extends AbstractParser {
      * @return
      */
     public static boolean writeField(StringBuilder buffer,
-                               String s1,
+                               String currentTag,
                                String lastTag0,
-                               String s2,
+                               String content,
                                String field,
                                String outField,
                                boolean addSpace,
                                int nbIndent,
 					 	  	   boolean generateIDs) {
         boolean result = false;
-		if (s1 == null) {
+		if (currentTag == null) {
 			return result;
 		}
-        if ((s1.equals(field)) || (s1.equals("I-" + field))) {
+        if ((currentTag.equals(field)) || (currentTag.equals("I-" + field))) {
             result = true;
 			String divID = null;
 			if (generateIDs) {
@@ -1696,43 +1740,43 @@ public class FullTextParser extends AbstractParser {
 				if (outField.charAt(outField.length()-2) == '>')
 					outField = outField.substring(0, outField.length()-2) + " xml:id=\"_"+ divID + "\">";
 			}
-            if (s1.equals(lastTag0) || s1.equals("I-" + lastTag0)) {
+            if (currentTag.equals(lastTag0) || currentTag.equals("I-" + lastTag0)) {
                 if (addSpace)
-                    buffer.append(" ").append(s2);
+                    buffer.append(" ").append(content);
                 else
-                    buffer.append(s2);
+                    buffer.append(content);
             }
             /*else if (lastTag0 == null) {
                    for(int i=0; i<nbIndent; i++) {
                        buffer.append("\t");
                    }
-                     buffer.append(outField+s2);
+                     buffer.append(outField+content);
                }*/
             else if (field.equals("<citation_marker>")) {
                 if (addSpace)
-                    buffer.append(" ").append(outField).append(s2);
+                    buffer.append(" ").append(outField).append(content);
                 else
-                    buffer.append(outField).append(s2);
+                    buffer.append(outField).append(content);
             } else if (field.equals("<figure_marker>")) {
                 if (addSpace)
-                    buffer.append(" ").append(outField).append(s2);
+                    buffer.append(" ").append(outField).append(content);
                 else
-                    buffer.append(outField).append(s2);
+                    buffer.append(outField).append(content);
             } else if (field.equals("<table_marker>")) {
                 if (addSpace)
-                    buffer.append(" ").append(outField).append(s2);
+                    buffer.append(" ").append(outField).append(content);
                 else
-                    buffer.append(outField).append(s2);
+                    buffer.append(outField).append(content);
             } else if (field.equals("<equation_marker>")) {
                 if (addSpace)
-                    buffer.append(" ").append(outField).append(s2);
+                    buffer.append(" ").append(outField).append(content);
                 else
-                    buffer.append(outField).append(s2);
+                    buffer.append(outField).append(content);
             } /*else if (field.equals("<label>")) {
                 if (addSpace)
-                    buffer.append(" ").append(outField).append(s2);
+                    buffer.append(" ").append(outField).append(content);
                 else
-                    buffer.append(outField).append(s2);
+                    buffer.append(outField).append(content);
             } */ /*else if (field.equals("<reference_marker>")) {
                 if (!lastTag0.equals("<reference>") && !lastTag0.equals("<reference_marker>")) {
                     for (int i = 0; i < nbIndent; i++) {
@@ -1741,14 +1785,14 @@ public class FullTextParser extends AbstractParser {
                     buffer.append("<bibl>");
                 }
                 if (addSpace)
-                    buffer.append(" ").append(outField).append(s2);
+                    buffer.append(" ").append(outField).append(content);
                 else
-                    buffer.append(outField).append(s2);
+                    buffer.append(outField).append(content);
             }*/ else if (lastTag0 == null) {
                 for (int i = 0; i < nbIndent; i++) {
                     buffer.append("\t");
                 }
-                buffer.append(outField).append(s2);
+                buffer.append(outField).append(content);
             } else if (!lastTag0.equals("<citation_marker>") 
             	&& !lastTag0.equals("<figure_marker>")
             	&& !lastTag0.equals("<equation_marker>")
@@ -1757,12 +1801,12 @@ public class FullTextParser extends AbstractParser {
                 for (int i = 0; i < nbIndent; i++) {
                     buffer.append("\t");
                 }
-                buffer.append(outField).append(s2);
+                buffer.append(outField).append(content);
             } else {
                 if (addSpace)
-                    buffer.append(" ").append(s2);
+                    buffer.append(" ").append(content);
                 else
-                    buffer.append(s2);
+                    buffer.append(content);
             }
         }
         return result;
@@ -1772,9 +1816,9 @@ public class FullTextParser extends AbstractParser {
      * This is for writing fields for fields where begin and end of field matter, like paragraph or item
      *
      * @param buffer
-     * @param s1
+     * @param currentTag
      * @param lastTag0
-     * @param s2
+     * @param content
      * @param field
      * @param outField
      * @param addSpace
@@ -1782,19 +1826,19 @@ public class FullTextParser extends AbstractParser {
      * @return
      */
     public static boolean writeFieldBeginEnd(StringBuilder buffer,
-                                       String s1,
+                                       String currentTag,
                                        String lastTag0,
-                                       String s2,
+                                       String content,
                                        String field,
                                        String outField,
                                        boolean addSpace,
                                        int nbIndent,
 									   boolean generateIDs) {
         boolean result = false;
-		if (s1 == null) {
+		if (currentTag == null) {
 			return false;
 		}
-        if ((s1.equals(field)) || (s1.equals("I-" + field))) {
+        if ((currentTag.equals(field)) || (currentTag.equals("I-" + field))) {
             result = true;
 			if (lastTag0 == null) {
 				lastTag0 = "";
@@ -1807,25 +1851,25 @@ public class FullTextParser extends AbstractParser {
 			}
             if (lastTag0.equals("I-" + field)) {
                 if (addSpace)
-                    buffer.append(" ").append(s2);
+                    buffer.append(" ").append(content);
                 else
-                    buffer.append(s2);
-            } else if (lastTag0.equals(field) && s1.equals(field)) {
+                    buffer.append(content);
+            } else if (lastTag0.equals(field) && currentTag.equals(field)) {
                 if (addSpace)
-                    buffer.append(" ").append(s2);
+                    buffer.append(" ").append(content);
                 else
-                    buffer.append(s2);
+                    buffer.append(content);
             } else if (!lastTag0.endsWith("<citation_marker>") && !lastTag0.endsWith("<figure_marker>")
                     && !lastTag0.endsWith("<table_marker>") && !lastTag0.endsWith("<equation_marker>")) {
                 for (int i = 0; i < nbIndent; i++) {
                     buffer.append("\t");
                 }
-                buffer.append(outField).append(s2);
+                buffer.append(outField).append(content);
             } else {
                 if (addSpace)
-                    buffer.append(" ").append(s2);
+                    buffer.append(" ").append(content);
                 else
-                    buffer.append(s2);
+                    buffer.append(content);
             }
         }
         return result;
@@ -1847,7 +1891,12 @@ public class FullTextParser extends AbstractParser {
         boolean res = false;
         // reference_marker and citation_marker are two exceptions because they can be embedded
 
-        if (!currentTag0.equals(lastTag0) || currentTag.equals("I-<paragraph>") || currentTag.equals("I-<item>")) {
+        if (!currentTag0.equals(lastTag0) 
+          || currentTag.equals("I-<paragraph>")
+          || currentTag.equals("I-<proof>")
+          || currentTag.equals("I-<theorem>") 
+          || currentTag.equals("I-<item>")) 
+        {
             if (currentTag0.equals("<citation_marker>") || currentTag0.equals("<equation_marker>") ||
 				currentTag0.equals("<figure_marker>") || currentTag0.equals("<table_marker>")) {
                 return res;
@@ -1877,6 +1926,9 @@ public class FullTextParser extends AbstractParser {
                 buffer.append("</label>\n\n");
             } else if (lastTag0.equals("<table>")) {
                 buffer.append("</table>\n\n");
+            } else if (lastTag0.equals("<theorem>") 
+                    || lastTag0.equals("<proof>")) {
+                buffer.append("</result>\n\n");
             } else if (lastTag0.equals("<figure>")) {
                 buffer.append("</figure>\n\n");
             } else if (lastTag0.equals("<item>")) {
@@ -2236,7 +2288,7 @@ public class FullTextParser extends AbstractParser {
 		List<TaggingTokenCluster> clusters = clusteror.cluster();
 
 		Equation currentResult = null;
-		TaggingLabel lastLabel = null;		
+		TaggingLabel lastLabel = null;	
 		for (TaggingTokenCluster cluster : clusters) {
             if (cluster == null) {
                 continue;

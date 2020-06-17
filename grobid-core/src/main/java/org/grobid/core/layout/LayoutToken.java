@@ -208,6 +208,10 @@ public class LayoutToken implements Comparable<LayoutToken>, Serializable {
         this.page = page;
     }
 
+    public BoundingBox getBoundingBox() {
+        return BoundingBox.fromPointAndDimensions(page,x,y,width,height);
+    }
+
     public boolean isNewLineAfter() {
         return newLineAfter;
     }

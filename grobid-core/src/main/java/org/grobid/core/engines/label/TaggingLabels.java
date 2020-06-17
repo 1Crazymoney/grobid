@@ -50,6 +50,8 @@ public class TaggingLabels {
     public final static String DATE_YEAR_LABEL = "<year>";
     public final static String DATE_MONTH_LABEL = "<month>";
     public final static String DATE_DAY_LABEL = "<day>";
+    public final static String THEOREM_LABEL = "<theorem>";
+    public final static String PROOF_LABEL = "<proof>";
 
     public final static String TITLE_LABEL = "<title>";
     public final static String ABSTRACT_LABEL = "<abstract>";
@@ -134,6 +136,8 @@ public class TaggingLabels {
     public static final TaggingLabel TABLE = new TaggingLabelImpl(GrobidModels.FULLTEXT, TABLE_LABEL);
     public static final TaggingLabel EQUATION = new TaggingLabelImpl(GrobidModels.FULLTEXT, EQUATION_LAB);
     public static final TaggingLabel EQUATION_LABEL = new TaggingLabelImpl(GrobidModels.FULLTEXT, EQUATION_ID_LABEL);
+    public static final TaggingLabel THEOREM = new TaggingLabelImpl(GrobidModels.FULLTEXT, THEOREM_LABEL);
+    public static final TaggingLabel PROOF = new TaggingLabelImpl(GrobidModels.FULLTEXT, PROOF_LABEL);
 
     public static final TaggingLabel HEADER_DATE = new TaggingLabelImpl(GrobidModels.HEADER, DATE_LABEL);
     public static final TaggingLabel HEADER_TITLE = new TaggingLabelImpl(GrobidModels.HEADER, TITLE_LABEL);
@@ -249,6 +253,8 @@ public class TaggingLabels {
         register(TABLE);
         register(EQUATION);
         register(EQUATION_LABEL);
+        register(THEOREM);
+        register(PROOF);
 
         //header
         register(HEADER_DATE);

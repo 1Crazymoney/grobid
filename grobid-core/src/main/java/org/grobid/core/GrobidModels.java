@@ -29,6 +29,7 @@ public enum GrobidModels implements GrobidModel {
     SHORTTEXT("shorttext"),
     FIGURE("figure"),
     TABLE("table"),
+    RESULT("result"),
     HEADER("header"),
     NAMES_CITATION("name/citation"),
     NAMES_HEADER("name/header"),

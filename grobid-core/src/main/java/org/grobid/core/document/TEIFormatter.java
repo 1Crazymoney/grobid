@@ -9,6 +9,7 @@ import nu.xom.Attribute;
 import nu.xom.Element;
 import nu.xom.Node;
 import nu.xom.Text;
+import scala.xml.Elem;
 
 import org.grobid.core.GrobidModels;
 import org.grobid.core.data.*;
@@ -1264,6 +1265,11 @@ public class TEIFormatter {
                 if (curList != null) {
                     curList.appendChild(itemNode);
                 }
+            } else if (clusterLabel.equals(TaggingLabels.THEOREM) || clusterLabel.equals(TaggingLabels.PROOF)) {
+                String clusterContent = LayoutTokensUtil.normalizeText(cluster.concatTokens());
+                Element itemNode = teiElement("result", clusterContent);
+                itemNode.addAttribute(new Attribute("type", clusterLabel.toString()));
+                curDiv.appendChild(itemNode);
             } else if (clusterLabel.equals(TaggingLabels.OTHER)) {
                 String clusterContent = LayoutTokensUtil.normalizeDehyphenizeText(cluster.concatTokens());
                 Element note = teiElement("note", clusterContent);

@@ -15,7 +15,6 @@
 
 package org.grobid.core.engines;
 
-import com.google.common.io.Files;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -47,7 +46,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
+import java.nio.file.*;
 import java.util.*;
+import java.util.stream.Stream;
 
 /**
  * Class for managing the extraction of bibliographical information from PDF
@@ -520,14 +521,15 @@ public class Engine implements Closeable {
      */
     public int batchCreateTraining(String directoryPath, String resultPath, int ind) {
         try {
-            File path = new File(directoryPath);
+            //File path = new File(directoryPath);
             // we process all pdf files in the directory
-            File[] refFiles = path.listFiles(new FilenameFilter() {
-                public boolean accept(File dir, String name) {
-                    System.out.println(name);
-                    return name.endsWith(".pdf") || name.endsWith(".PDF");
-                }
-            });
+
+            Stream<Path> files = Files.walk(Paths.get(directoryPath));
+            
+            File[] refFiles = files.filter(p -> p.toString().toLowerCase().endsWith(".pdf"))
+                                   .map(p -> p.toFile()).toArray(File[]::new);
+            
+            files.close();
 
             if (refFiles == null)
                 return 0;

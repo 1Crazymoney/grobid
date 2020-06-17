@@ -77,7 +77,7 @@ public class BoundingBox {
         else if (ay2 < by1) return false;
         else if (ay1 > by2) return false;
         else
-            return true;
+            return this.page == b.page;
     }
 
     public int getPage() {
@@ -125,7 +125,7 @@ public class BoundingBox {
 
 
     public boolean contains(BoundingBox b) {
-        return x <= b.x && y <= b.y && x2 >= b.x2 && y2 >= b.y2;
+        return x <= b.x && y <= b.y && x2 >= b.x2 && y2 >= b.y2 && b.page == page;
     }
 
     private double dist(double x1, double y1, double x2, double y2) {
